@@ -19,7 +19,7 @@ import { isOriginAllowed } from "./config.js";
 import { createUploadStorage } from "./services/upload-storage.js";
 import { frontendRoutes } from "./frontend.js";
 
-export function createApplication({ pool, config, sessionStore }) {
+export function createApplication({ pool, config, sessionStore, frontendDirectory }) {
   const app = express();
   const uploadStorage = createUploadStorage(config);
   const httpServer = createServer(app);
@@ -84,7 +84,9 @@ export function createApplication({ pool, config, sessionStore }) {
       },
     }),
   );
-  app.use(cors(corsOptions));
+  // Public frontend files must load even before the API origin list is set up.
+  // Keep origin enforcement on backend resources and Socket.IO.
+  app.use(["/api", "/uploads", "/demo"], cors(corsOptions));
   app.use(express.json({ limit: "25mb" }));
   app.use(express.urlencoded({ extended: true, limit: "25mb" }));
   if (!uploadStorage.usesS3) {
@@ -137,7 +139,7 @@ export function createApplication({ pool, config, sessionStore }) {
       express.static(fileURLToPath(new URL("../examples/", import.meta.url))),
     );
   }
-  app.use(frontendRoutes());
+  app.use(frontendRoutes(frontendDirectory));
   app.use((req, res, next) =>
     next(new AppError(404, "NOT_FOUND", "Endpoint not found.")),
   );

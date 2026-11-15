@@ -5,8 +5,45 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import express from "express";
 import request from "supertest";
+import session from "express-session";
+import { createApplication } from "../src/app.js";
+import { readConfig } from "../src/config.js";
 import { frontendRoutes } from "../src/frontend.js";
 import { errorHandler } from "../src/lib/errors.js";
+
+test("frontend styles and scripts load when the page origin is absent from the API allowlist", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "yiedie-frontend-origin-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, "assets"));
+  await writeFile(join(directory, "index.html"), '<!doctype html><div id="root"></div>');
+  await writeFile(join(directory, "assets/app.css"), "body { color: black; }");
+  await writeFile(join(directory, "assets/app.js"), 'console.log("frontend");');
+  const store = new session.MemoryStore();
+  const { app, io } = createApplication({
+    pool: { query() { throw new Error("Static requests must not query the database"); } },
+    config: readConfig({
+      NODE_ENV: "test",
+      SESSION_SECRET: "frontend-origin-test-only",
+      CLIENT_ORIGINS: "https://yiedie.com",
+    }),
+    sessionStore: store,
+    frontendDirectory: directory,
+  });
+  t.after(async () => {
+    await new Promise((resolve) => io.close(resolve));
+    store.clear();
+  });
+
+  for (const [path, type] of [["/", /html/], ["/assets/app.css", /text\/css/], ["/assets/app.js", /javascript/]]) {
+    await request(app).get(path).set("Origin", "https://altbittek.com")
+      .expect(200).expect("Content-Type", type);
+  }
+  const denied = await request(app).get("/api/health")
+    .set("Origin", "https://altbittek.com").expect(403);
+  assert.equal(denied.body.error.code, "ORIGIN_DENIED");
+  await request(app).get("/api/health").set("Origin", "https://yiedie.com")
+    .expect(200).expect("Access-Control-Allow-Origin", "https://yiedie.com");
+});
 
 test("a missing frontend build reports a deployment error while the API remains available", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "yiedie-missing-frontend-"));

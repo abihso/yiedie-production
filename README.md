@@ -146,7 +146,7 @@ NODE_ENV=production
 HOST=0.0.0.0
 TRUST_PROXY=1
 COOKIE_SAME_SITE=none
-CLIENT_ORIGINS=https://yiedie.com
+CLIENT_ORIGINS=https://altbittek.com,https://yiedie.com
 ```
 
 Set `CLIENT_ORIGINS` to the exact origin shown in the browser's address bar
@@ -156,7 +156,14 @@ only when exactly one trusted reverse proxy sits in front of Node; use the
 number of trusted proxy hops for a different topology. Do not enable proxy
 trust when Node is exposed directly to clients.
 
-The deployed frontend at `https://yiedie.com` calls
+When opening the backend-hosted frontend at `https://altbittek.com`, that origin
+must be in the allowlist for API requests and Socket.IO. Preserve any other
+frontend origins you still use. Update the environment used by the systemd
+service, then run `sudo systemctl restart yiedie-backend.service`.
+An `ORIGIN_DENIED` response means the request's origin is missing from this
+list. Public frontend assets are served independently of this API allowlist.
+
+The separately deployed frontend at `https://yiedie.com` calls
 `https://altbittek.com/api`. These are different sites, so the API session
 cookie needs `SameSite=None; Secure`. In the existing Nginx HTTPS location
 that proxies `/api` to Node, ensure these headers are set:
