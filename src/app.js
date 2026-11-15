@@ -17,6 +17,7 @@ import { callRoutes } from "./routes/calls.js";
 import { attachRealtime } from "./realtime/index.js";
 import { isOriginAllowed } from "./config.js";
 import { createUploadStorage } from "./services/upload-storage.js";
+import { frontendRoutes } from "./frontend.js";
 
 export function createApplication({ pool, config, sessionStore }) {
   const app = express();
@@ -70,7 +71,14 @@ export function createApplication({ pool, config, sessionStore }) {
     helmet({
       contentSecurityPolicy: {
         directives: {
-          "connect-src": ["'self'", "ws:", "wss:"],
+          "connect-src": [
+            "'self'", "ws:", "wss:",
+            "https://api.iconify.design",
+            "https://api.simplesvg.com",
+            "https://api.unisvg.com",
+          ],
+          "img-src": ["'self'", "https:", "data:", "blob:"],
+          "media-src": ["'self'", "https:", "blob:"],
           "upgrade-insecure-requests": config.production ? [] : null,
         },
       },
@@ -129,6 +137,7 @@ export function createApplication({ pool, config, sessionStore }) {
       express.static(fileURLToPath(new URL("../examples/", import.meta.url))),
     );
   }
+  app.use(frontendRoutes());
   app.use((req, res, next) =>
     next(new AppError(404, "NOT_FOUND", "Endpoint not found.")),
   );

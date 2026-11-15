@@ -40,7 +40,7 @@ if (
   const config = readConfig();
   const pool = createPool(config.databaseUrl);
   const { httpServer, io, store } = await startServer({ config, pool });
-  console.log(`Yiedie API listening on http://${config.host}:${config.port}`);
+  console.log(`Yiedie frontend and API listening on http://${config.host}:${config.port}`);
   if (config.enableDemo)
     console.log(`Browser demo: http://localhost:${config.port}/demo/`);
 

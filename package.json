@@ -9,7 +9,10 @@
     "node": ">=22"
   },
   "scripts": {
+    "build:frontend": "node scripts/build-frontend.js",
+    "prestart": "npm run build:frontend",
     "start": "node src/index.js",
+    "predev": "npm run build:frontend",
     "dev": "nodemon src/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node src/db/drizzle-migrate.js",

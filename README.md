@@ -1,9 +1,41 @@
 # Yiedie backend
 
+## Serve the frontend from the backend
+
+Install dependencies for both projects once:
+
+```sh
+npm ci
+npm ci --prefix windows-yeidie-froned-main
+```
+
+With the backend database and session environment configured, run `npm start`
+and open `http://localhost:4000/` (or your configured `PORT`). Both `npm start`
+and `npm run dev` build the React frontend before starting the backend. The
+backend serves the build from `windows-yeidie-froned-main/dist` at `/`, with
+frontend route refreshes supported. API endpoints remain under `/api`, and
+Socket.IO remains under `/socket.io`.
+
+This build uses `/api` on the same origin, overriding the frontend's
+`VITE_API_URL` setting for separate deployments. Add the origin you open in
+the browser to `CLIENT_ORIGINS` so API mutations and socket connections are
+allowed. The default list already includes `http://localhost:4000`.
+For HTTPS deployments behind a proxy, configure `TRUST_PROXY` as described
+below and forward all paths to the backend, including WebSocket upgrades.
+
+To rebuild frontend edits while the backend is running, run
+`npm run build:frontend`. The backend immediately serves the updated files.
+When launching directly with `node src/index.js` or a process manager, run
+`npm run build:frontend` first. Build-time frontend dependencies must be
+installed; do not omit dev dependencies in the build environment.
+
 ## Render deployment
 
-Use `npm ci` as the build command, `npm start` as the start command, and
+Use `npm ci && npm ci --prefix windows-yeidie-froned-main && npm run build:frontend`
+as the build command, `node src/index.js` as the start command, and
 `/api/health` as the health check path. The server uses Render's `PORT`.
+Include the frontend directory in the deployed source. To use the frontend
+served by Render, also add your Render service origin to `CLIENT_ORIGINS`.
 
 Set these variables in the Render service's **Environment** settings:
 
@@ -92,15 +124,32 @@ backend environment to include:
 NODE_ENV=production
 HOST=0.0.0.0
 TRUST_PROXY=1
-CLIENT_ORIGINS=https://altbittek.com
+COOKIE_SAME_SITE=none
+CLIENT_ORIGINS=https://yiedie.com
 ```
 
 Set `CLIENT_ORIGINS` to the exact origin shown in the browser's address bar
-(include `https://www.altbittek.com` too if users access the `www` host). Keep
+(include `https://www.yiedie.com` too if users access the `www` host). Keep
 `DATABASE_URL` and `SESSION_SECRET` configured as secrets. Use `TRUST_PROXY=1`
 only when exactly one trusted reverse proxy sits in front of Node; use the
 number of trusted proxy hops for a different topology. Do not enable proxy
 trust when Node is exposed directly to clients.
+
+The deployed frontend at `https://yiedie.com` calls
+`https://altbittek.com/api`. These are different sites, so the API session
+cookie needs `SameSite=None; Secure`. In the existing Nginx HTTPS location
+that proxies `/api` to Node, ensure these headers are set:
+
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+After editing Nginx, run `sudo nginx -t && sudo systemctl reload nginx`.
+Restart the Node process with the updated environment as well. If using
+PM2-managed environment variables, restart with `--update-env`.
 
 The backend sets production session cookies as `Secure`. Behind Nginx, Express
 must trust the forwarded HTTPS protocol or it will omit that cookie. Without
@@ -115,6 +164,12 @@ and that the subsequent `POST /api/auth/register` sends both that cookie and
 the `X-CSRF-Token` header. Do not share the cookie value. A `401` from
 `GET /api/auth/me` while signed out is expected; it should stop after a
 successful login or registration.
+
+A successful CSRF response without `Set-Cookie` in a fresh session is a
+server/proxy configuration problem; adding another frontend header will not
+fix it. If the cookie is issued but the browser blocks it as a third-party
+cookie, serve the API under the frontend's site (for example, a same-origin
+`/api` reverse proxy) and update the frontend API URL accordingly.
 
 ## Checks
 
