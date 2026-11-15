@@ -1,0 +1,24 @@
+name: Deploy Node App to Droplet
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/abihsolo/yiedie-production
+            git pull origin main
+            npm ci --omit=dev
+            sudo /usr/bin/systemctl restart yiedie-backend.service
