@@ -1,0 +1,5 @@
+Make all fonts across the app slightly bolder by increasing each font weight by one step, capped at the font’s maximum supported weight. Preserve the visual hierarchy between body text, labels, buttons, and headings.
+
+Implement this through global typography styles and shared font-weight tokens so existing and future pages automatically inherit the same styling. Apply it consistently to navigation, forms, calendars, dialogs, and shared components. Update any hardcoded font weights to use the shared tokens.
+
+Keep font families, sizes, colors, spacing, and layouts unchanged. Load the matching font weights for crisp rendering, and verify the app builds successfully.”

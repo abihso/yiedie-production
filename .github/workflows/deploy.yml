@@ -21,4 +21,7 @@ jobs:
             cd /home/abihsolo/yiedie-production
             git pull origin main
             npm ci --omit=dev
+            npm ci --prefix windows-yeidie-froned-main --include=dev
+            npm run build:frontend
+            test -s windows-yeidie-froned-main/dist/index.html
             sudo /usr/bin/systemctl restart yiedie-backend.service

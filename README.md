@@ -117,6 +117,27 @@ and [Express session proxy and cookie settings](https://expressjs.com/en/resourc
 
 ## DigitalOcean Droplet deployment
 
+The GitHub deployment workflow installs both projects' dependencies and builds
+the frontend before restarting `yiedie-backend.service`. The frontend source
+must be committed as regular files inside this repository; `dist` is generated
+on the Droplet and is intentionally ignored by Git.
+
+For a manual deployment, run these commands from the backend repository:
+
+```sh
+git pull origin main
+npm ci --omit=dev
+npm ci --prefix windows-yeidie-froned-main --include=dev
+npm run build:frontend
+test -s windows-yeidie-froned-main/dist/index.html
+sudo systemctl restart yiedie-backend.service
+```
+
+Only restart after the build succeeds. A `FRONTEND_NOT_BUILT` response at `/`
+means the build is missing. For other errors, inspect the server log with
+`sudo journalctl -u yiedie-backend.service -n 50 --no-pager` and check which
+request path failed.
+
 When Nginx terminates HTTPS and forwards requests to the Node process, set the
 backend environment to include:
 
