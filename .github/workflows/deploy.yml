@@ -4,24 +4,118 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+concurrency:
+  group: droplet-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
 
     steps:
-      - name: Deploy via SSH
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: windows-yeidie-froned-main/package-lock.json
+
+      - name: Install frontend dependencies on GitHub runner
+        timeout-minutes: 10
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: npm ci --prefix windows-yeidie-froned-main --include=dev --no-audit --no-fund --foreground-scripts --loglevel=info --fetch-timeout=30000 --fetch-retries=2
+
+      - name: Build frontend on GitHub runner
+        timeout-minutes: 7
+        run: |
+          npm run build:frontend
+          test -s windows-yeidie-froned-main/dist/index.html
+
+      - name: Check SSH and update source
         uses: appleboy/ssh-action@v1.0.3
+        timeout-minutes: 4
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.DROPLET_HOST }}
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.DROPLET_SSH_KEY }}
+          timeout: 20s
+          command_timeout: 3m
+          envs: DEPLOY_SHA
           script: |
-            set -e
+            set -eu
+            echo "SSH connected; checking runtime and updating source"
             cd /home/abihsolo/yiedie-production
-            git pull origin main
-            npm ci --omit=dev
-            npm ci --prefix windows-yeidie-froned-main --include=dev
-            npm run build:frontend
+            node --version
+            npm --version
+            export GIT_TERMINAL_PROMPT=0
+            export GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=15'
+            timeout --kill-after=10s 120s git pull --ff-only origin main
+            if [ "$(git rev-parse HEAD)" != "$DEPLOY_SHA" ]; then
+              echo "A newer commit is on main; deploy its workflow run instead."
+              exit 1
+            fi
+            echo "Source updated"
+
+      - name: Install backend dependencies
+        uses: appleboy/ssh-action@v1.0.3
+        timeout-minutes: 7
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          timeout: 20s
+          command_timeout: 6m
+          script: |
+            set -eu
+            cd /home/abihsolo/yiedie-production
+            echo "Installing backend dependencies (5 minute limit)"
+            export GIT_TERMINAL_PROMPT=0
+            export GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=15'
+            timeout --kill-after=10s 5m npm ci --omit=dev --no-audit --no-fund --foreground-scripts --loglevel=info --fetch-timeout=30000 --fetch-retries=2
+
+      - name: Upload built frontend
+        uses: appleboy/scp-action@v0.1.7
+        timeout-minutes: 6
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          timeout: 20s
+          command_timeout: 5m
+          source: windows-yeidie-froned-main/dist/*
+          target: /home/abihsolo/yiedie-production/.deploy/frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          strip_components: 2
+
+      - name: Publish frontend and restart backend
+        uses: appleboy/ssh-action@v1.0.3
+        timeout-minutes: 3
+        env:
+          FRONTEND_STAGING: .deploy/frontend-${{ github.run_id }}-${{ github.run_attempt }}
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          timeout: 20s
+          command_timeout: 2m
+          envs: FRONTEND_STAGING
+          script: |
+            set -eu
+            cd /home/abihsolo/yiedie-production
+            bash scripts/publish-frontend.sh "$FRONTEND_STAGING" windows-yeidie-froned-main/dist
             test -s windows-yeidie-froned-main/dist/index.html
-            sudo /usr/bin/systemctl restart yiedie-backend.service
+            echo "Restarting backend service (90 second limit)"
+            timeout --kill-after=10s 90s sudo -n /usr/bin/systemctl restart yiedie-backend.service
+            /usr/bin/systemctl is-active yiedie-backend.service
+            echo "Deployment completed"

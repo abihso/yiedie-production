@@ -117,12 +117,35 @@ and [Express session proxy and cookie settings](https://expressjs.com/en/resourc
 
 ## DigitalOcean Droplet deployment
 
-The GitHub deployment workflow installs both projects' dependencies and builds
-the frontend before restarting `yiedie-backend.service`. The frontend source
-must be committed as regular files inside this repository; `dist` is generated
-on the Droplet and is intentionally ignored by Git.
+The GitHub deployment workflow installs frontend dependencies and builds the
+frontend on the GitHub runner using Node 24 and an npm cache. Icon packages
+come from npm rather than GitLab SSH repositories. The Droplet only updates
+the source, installs backend production dependencies, receives the built
+frontend, and restarts `yiedie-backend.service`.
 
-For a manual deployment, run these commands from the backend repository:
+The frontend source must be committed as regular files in this repository.
+The generated `dist` directory is uploaded automatically and stays ignored by
+Git. Uploads go to a temporary `.deploy` directory; assets are copied before
+the new `index.html` is published. Previous hashed assets remain available to
+already-open browser tabs. The source commit on the Droplet must match the
+build's commit, otherwise deployment stops and the newer run should be used.
+
+Actions shows separate steps for installation, building, SSH, upload, and
+restart. Each step has a time limit, and Git/sudo cannot wait for interactive
+input. Deployments run one at a time. The existing `DROPLET_HOST`,
+`DROPLET_USER`, and `DROPLET_SSH_KEY` secrets are also used for uploads. The
+deploy user must have passwordless sudo permission for the service restart
+command. Configure the service to run `node src/index.js` directly; `npm start`
+would run the local frontend build hook again on the Droplet.
+
+If deployment stalls, expand the running step. No `SSH connected` message in
+the source-update step points to connection/session setup. A remote timeout
+exits with code 124 (or 137 if forced termination was needed). Workflow changes
+apply to new runs after pushing the commit; rerunning an older commit uses its
+older workflow.
+
+For a manual deployment that builds on the Droplet instead, run these commands
+from the backend repository (this requires enough memory for the frontend build):
 
 ```sh
 git pull origin main
